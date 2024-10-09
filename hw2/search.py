@@ -77,13 +77,19 @@ if __name__=='__main__':
 	returnRateBest=-1.00	 # Initial best return rate
 	df=pd.read_csv(sys.argv[1])	# read stock file
 	adjClose=df["Adj Close"].values		# get adj close as the price vector
-	windowSizeMin=11; windowSizeMax=20;	# Range of windowSize to explore
-	alphaMin=-5; alphaMax=5;			# Range of alpha to explore
-	betaMin=-5; betaMax=5				# Range of beta to explore
+
+	min_window_size = 10
+	max_window_size = 50
+	min_rolling_window = 5
+	max_rolling_window = 15
+	min_low_threshold = 15
+	max_low_threshold = 35
+	min_high_threshold = 65
+	max_high_threshold = 85
 	# Start exhaustive search
-	for windowSize in range(windowSizeMin, windowSizeMax+1):		# For-loop for windowSize
+	for windowSize in range(min_window_size, max_window_size+1):		# For-loop for windowSize
 		print("windowSize=%d" %(windowSize))
-		for alpha in range(alphaMin, alphaMax+1):	    	# For-loop for alpha
+		for rolling_size in range(min_rolling_window, max_rolling_window+1):	    	# For-loop for alpha
 			print("\talpha=%d" %(alpha))
 			for beta in range(betaMin, betaMax+1):		# For-loop for beta
 				print("\t\tbeta=%d" %(beta), end="")	# No newline
