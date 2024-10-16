@@ -1,45 +1,44 @@
 import pandas as pd
 import numpy as np
 import sys
+from tqdm import tqdm
+from operator import itemgetter
 
 
 
-def myStrategy(pastPriceVec, currentPrice, window_size, rolling_window, low_threshold, high_threshold):
+def myStrategy(pastPriceVec, currentPrice, window_size, low_threshold, high_threshold):
 	# buy return 1
 	# sell return -1
 	# hold return 0
-    action = 0
+	action = 0
 
-    if len(pastPriceVec) + 1 < window_size:
-        return action
+	if len(pastPriceVec) + 1 < window_size:
+		return action
 	
-    pastPriceVec = pastPriceVec[-window_size:]
-    PriceVec = np.concatenate(pastPriceVec, np.array(currentPrice))
-	
-    PriceVec = pd.DataFrame(PriceVec)
-    delta = PriceVec.diff()
-    delta = delta[1:]
-	
-    pricesUp = delta.copy()
-    pricesDown = delta.copy()
-	
-    pricesUp[pricesUp < 0] = 0
-    pricesDown[pricesDown > 0] = 0
-	
-    rollUp = pricesUp.rolling(rolling_window).mean()
-    rollDown = pricesDown.rolling(rolling_window).mean()
-	
-    rs = rollUp/rollDown
-    rsi = 100.0 - (100.0 / (1.0 + rs))
+	pastPriceVec = pastPriceVec[-window_size:]
 
-    if rsi > high_threshold:
-        action = -1
-    elif rsi < low_threshold:
-        action = 1
+	PriceVec = np.concatenate((pastPriceVec, np.array([currentPrice], dtype=np.float64)), axis=0)
 
-    return action
+	delta = np.diff(PriceVec)
+	
+	pricesUp = delta.copy()
+	pricesDown = delta.copy()
+	
+	pricesUp[pricesUp < 0] = 0
+	pricesDown[pricesDown > 0] = 0
+	pricesUp = np.sum(pricesUp)
+	pricesDown = - np.sum(pricesDown)
 
-def rrEstimate(priceVec, window_size, rolling_window, low_threshold, high_threshold):
+	rs = pricesUp/(pricesDown+1e-9)
+	
+	rsi = 100.0 - (100.0 / (1.0 + rs))
+	if rsi > high_threshold:
+		action = -1
+	elif rsi < low_threshold:
+		action = 1
+	return action
+
+def rrEstimate(priceVec, window_size, low_threshold, high_threshold):
 	capital=1000	# Initial available capital
 	capitalOrig=capital		# original capital
 	dataCount=len(priceVec)				# day size
@@ -50,7 +49,7 @@ def rrEstimate(priceVec, window_size, rolling_window, low_threshold, high_thresh
 	# Run through each day
 	for ic in range(dataCount):
 		currentPrice=priceVec[ic]	# current price
-		suggestedAction[ic]=myStrategy(priceVec[0:ic], currentPrice, window_size, rolling_window, low_threshold, high_threshold)		# Obtain the suggested action
+		suggestedAction[ic]=myStrategy(priceVec[0:ic], currentPrice, window_size, low_threshold, high_threshold)		# Obtain the suggested action
 		# get real action by suggested action
 		if ic>0:
 			stockHolding[ic]=stockHolding[ic-1]	# The stock holding from the previous day
@@ -77,27 +76,40 @@ if __name__=='__main__':
 	returnRateBest=-1.00	 # Initial best return rate
 	df=pd.read_csv(sys.argv[1])	# read stock file
 	adjClose=df["Adj Close"].values		# get adj close as the price vector
-
-	min_window_size = 10
-	max_window_size = 50
-	min_rolling_window = 5
-	max_rolling_window = 15
-	min_low_threshold = 15
-	max_low_threshold = 35
-	min_high_threshold = 65
-	max_high_threshold = 85
+	result = []
+	min_window_size = 20
+	max_window_size = 26
+	min_low_threshold = 10
+	max_low_threshold = 40
+	min_high_threshold = 60
+	max_high_threshold = 90
 	# Start exhaustive search
-	for windowSize in range(min_window_size, max_window_size+1):		# For-loop for windowSize
-		print("windowSize=%d" %(windowSize))
-		for rolling_size in range(min_rolling_window, max_rolling_window+1):	    	# For-loop for alpha
-			print("\talpha=%d" %(alpha))
-			for beta in range(betaMin, betaMax+1):		# For-loop for beta
-				print("\t\tbeta=%d" %(beta), end="")	# No newline
-				returnRate=rrEstimate(adjClose, windowSize, alpha, beta)		# Start the whole run with the given parameters
-				print(" ==> returnRate=%f " %(returnRate))
+	step_window = 1
+	step_low = 1
+	step_high = 1
+	pbar = tqdm(range(min_window_size, max_window_size+1, step_window))
+	for windowSize in pbar:		# For-loop for windowSize
+		# tqdm.write(f"windowSize={windowSize}")
+		for low_threshold in range(min_low_threshold, max_low_threshold+1, step_low):		# For-loop for beta
+			# print("low_threshold=%d" %(low_threshold))	# No newline
+			for high_threshold in range(min_high_threshold, max_high_threshold+1, step_high):		# For-loop for beta
+				# print("high_threshold=%d" %(high_threshold))
+				returnRate=rrEstimate(adjClose, windowSize, low_threshold, high_threshold)		# Start the whole run with the given parameters
+				# print(" ==> returnRate=%f " %(returnRate))
+				pbar.set_postfix({
+					"windowSize": windowSize, 
+					"low_threshold": low_threshold,
+					"high_threshold": high_threshold,
+					"returnRate": returnRate
+				})
 				if returnRate > returnRateBest:		# Keep the best parameters
 					windowSizeBest=windowSize
-					alphaBest=alpha
-					betaBest=beta
+					low_thresholdBest=low_threshold
+					high_thresholdBest=high_threshold
 					returnRateBest=returnRate
-	print("Best settings: windowSize=%d, alpha=%d, beta=%d ==> returnRate=%f" %(windowSizeBest,alphaBest,betaBest,returnRateBest))		# Print the best result
+				print(f"Best Return rate {returnRateBest}")
+				result.append([returnRate, windowSize, low_threshold, high_threshold])
+	result = sorted(result, key=itemgetter(0), reverse=True)
+	result = pd.DataFrame(result)
+	result.to_csv('result2.csv')
+	print("Best settings: windowSize=%d, alpha=%d, beta=%d ==> returnRate=%f" %(windowSizeBest,low_thresholdBest, high_thresholdBest,returnRateBest))		# Print the best result
