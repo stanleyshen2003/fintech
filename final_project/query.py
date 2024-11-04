@@ -5,10 +5,7 @@ from google.cloud import discoveryengine_v1 as discoveryengine
 from google.protobuf.json_format import MessageToDict
 
 # TODO(developer): Uncomment these variables before running the sample.
-project_id = "tw-rd-tam-stanleyshen"
-location = "global"          # Values: "global", "us", "eu"
-engine_id = "esun-insurance_1729776330935"
-search_query = "匯款銀行及中間行所收取之相關費用由誰負擔?"
+
 
 
 def client_create(
@@ -33,7 +30,7 @@ def client_create(
     
     return client, serving_config, content_search_spec
 
-def query(client, serving_config, content_search_spec, search_query):
+def query_gcp(client, serving_config, content_search_spec, search_query, category):
 
     # Refer to the `SearchRequest` reference for all supported fields:
     # https://cloud.google.com/python/docs/reference/discoveryengine/latest/google.cloud.discoveryengine_v1.types.SearchRequest
@@ -51,10 +48,34 @@ def query(client, serving_config, content_search_spec, search_query):
     )
 
     response = client.search(request)
-    result = [int(dict(doc.document.derived_struct_data)['title']) for doc in response.results]
+    if category == 'faq':
+        result = [int(dict(doc.document.struct_data)['pid']) for doc in response.results]
+    else:
+        result = [int(dict(doc.document.derived_struct_data)['title']) for doc in response.results]
 
     return result
 
-client, serving_config, content_search_spec = client_create(project_id, location, engine_id)
-result = query(client, serving_config, content_search_spec, search_query)
-print(result)
+class Query():
+    def __init__(self):
+        project_id = "tw-rd-tam-stanleyshen"
+        location = "global"          # Values: "global", "us", "eu"
+
+        self.indeces = {"insurance":0, "faq":1, "finance":2}
+        self.engine_ids = {"insurance":"esun-insurance_1729776330935", "faq":"esun-faq_1729619178528", "finance":"esun-finance_1730708397021"}
+
+        self.clients = []
+
+        for category in self.indeces.keys():
+            client, serving_config, content_search_spec = client_create(project_id, location, self.engine_ids[category])
+            self.clients.append([client, serving_config, content_search_spec])
+
+    def query(self, search_query, category):
+        index = self.indeces[category]
+        client, serving_config, content_search_spec = self.clients[index]
+        result = query_gcp(client, serving_config, content_search_spec, search_query, category)
+        return result
+    
+
+if __name__ == '__main__':
+    query_util = Query()
+    print(query_util.query("有關留學生在學期間，應每年向本行繳交留學生成績單或註冊證明等在學證明，及入出國及移民署核發之該留學生入出國日期證明書等相關文件，需於每年幾月繳交且如何繳交 ？", "faq"))
